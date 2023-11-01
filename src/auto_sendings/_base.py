@@ -44,6 +44,8 @@ class BaseSending:
         return True
 
     async def start(self):
+        if not self.is_active:
+            return
         self._verify()
         while True:
             async with async_session() as session:

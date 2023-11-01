@@ -1,8 +1,10 @@
+import re
 import asyncio
 import random
 
 from aiogram import types
 from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 
 from pathlib import Path
 
@@ -12,46 +14,42 @@ from ..models import db
 from ._utils import kb, texts, states
 
 
+class UserStates(StatesGroup):
+    ask_date = State()
+    ask_city = State()
+
+
 codes = list(range(124561, 463281))
 
 
 @dp.message_handler(commands=['start'], state='*')
-async def start(message: types.Message):
+async def start(message: types.Message, state: FSMContext):
     await db.registrate_if_not_exists(message.from_user.id)
     await db.update_stage(message.from_user.id, 'stage_1')
     await message.answer(texts.welcome, reply_markup=kb.start)
 
 
-@dp.message_handler(lambda message: message.text == "🌙Таро расклад общее состояние", state='*')
+@dp.message_handler(lambda message: message.text == "🌙Хочу прогноз", state='*')
 async def start_choosing_cards(message: types.Message, state: FSMContext):
     await db.update_stage(message.from_user.id, 'stage_2')
-    f = types.InputFile(DATA_DIR / 'taro_cards.jpg')
-    await message.answer_photo(f, caption=texts.choose_taro_card, reply_markup=kb.choosing_taro_card)
+    await message.answer(texts.ask_date)
+    await state.set_state(UserStates.ask_date.state)
 
 
-@dp.message_handler(lambda message: message.text in kb.taro_cards_title, state='*')
+@dp.message_handler(state=UserStates.ask_date)
+async def get_user_date(message: types.Message, state: FSMContext):
+    if re.fullmatch(r'\d{1,2}\.\d{1,2}\.\d{4}', message.text):
+        day, month, year = message.text.split('.')
+        if 0 < int(day) < 32 and 0 < int(month) < 13 and int(year) < 2023:
+            await db.update_stage(message.from_user.id, 'stage_3')
+            await message.answer(texts.ask_city)
+            await state.set_state(UserStates.ask_city.state)
+        else:
+            await message.answer('Некорректная дата.\n🙏Для получения прогноза, пожалуйста, напишите дату рождения в форме дд.мм.гггг')
+    else:
+        await message.answer('Неверный формат.\n🙏Для получения прогноза, пожалуйста, напишите дату рождения в форме дд.мм.гггг')
+
+
+@dp.message_handler(state=UserStates.ask_city)
 async def choose_card(message: types.Message, state: FSMContext):
-    await message.answer('🪄Обрабатываю информацию...', reply_markup=types.ReplyKeyboardRemove())
-    choose = int(message.text.split()[-1]) - 1
-    asyncio.create_task(send_late_taro_analyze(message, choose))
-
-
-def get_taro_card(user_choice: int):
-    if len(texts.taro_cards) - 1 < user_choice:
-        user_choice = -1
-    photo: Path = texts.taro_cards[user_choice]['photo']
-    text: str = texts.taro_cards[user_choice]['text']
-    return photo, text
-
-
-async def send_late_taro_analyze(message: types.Message, user_choose: int):
-    await asyncio.sleep(4.5)
-    if len(texts.taro_cards) - 1 < user_choose:
-        user_choose = -1
-    photo, text = get_taro_card(user_choose)
-    await db.update_stage(message.from_user.id, 'stage_3')
-    file = types.InputFile(photo)
-    await message.answer_photo(file, caption=text, parse_mode='html')
-    await asyncio.sleep(1.5)
-    code = random.choice(codes)
-    await message.answer(texts.byte_message.substitute(code=str(code)), reply_markup=kb.to_autoanswer, parse_mode='html')
+    await message.answer(texts.byte_message.substitute(random.choice(codes)), reply_markup=kb.to_autoanswer)
