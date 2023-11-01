@@ -32,7 +32,7 @@ class Sending2Hours(BaseSending):
 
     async def start(self):
         try:
-            if self._verify():
+            if self.is_active and self._verify():
                 return await super().start()
         except ValueError as ex:
             logger.info(f'Sending2Hours {ex.args}')
@@ -54,7 +54,7 @@ class Sending24Hours(BaseSending):
 
     async def start(self):
         try:
-            if self._verify():
+            if self.is_active and self._verify():
                 await super().start()
         except ValueError as ex:
             logger.info(f'Sending24Hours {ex.args}')
